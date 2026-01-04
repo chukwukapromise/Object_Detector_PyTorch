@@ -1,6 +1,5 @@
-fastapi
-uvicorn
-torch
-torchvision
+streamlit
+opencv-python-headless
+tensorflow
 pillow
-python-multipart
+numpy
