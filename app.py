@@ -2,16 +2,19 @@ import cv2
 import numpy as np
 import streamlit as st
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input as mobilenet_v2_preprocess_input
 
-# load TFLite model
-model = tf.lite.Interpreter(model_path="dog-breed.tflite")
-model.allocate_tensors()
+# --- LOAD TFLITE MODEL ---
+interpreter = tf.lite.Interpreter(model_path="dog-breed.tflite")
+interpreter.allocate_tensors()
 
-### load file
+# Get input and output details once
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# --- FILE UPLOADER ---
 uploaded_file = st.file_uploader("Choose an image file to get started", type=["jpg", "jpeg", "webp", "png"])
 
+# label dictionary
 map_dict = {0: 'boston_bull', 1: 'dingo', 2: 'pekinese', 3: 'bluetick', 4: 'golden_retriever',
     5: 'bedlington_terrier', 6: 'borzoi', 7: 'basenji', 8: 'scottish_deerhound', 9: 'shetland_sheepdog',
     10: 'walker_hound', 11: 'maltese_dog', 12: 'norfolk_terrier', 13: 'african_hunting_dog', 14: 'wire-haired_fox_terrier',
@@ -39,18 +42,33 @@ map_dict = {0: 'boston_bull', 1: 'dingo', 2: 'pekinese', 3: 'bluetick', 4: 'gold
 
 
 if uploaded_file is not None:
-    # Convert the file to an opencv image.
+    # Convert the file to an opencv image
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     opencv_image = cv2.imdecode(file_bytes, 1)
     opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(opencv_image,(224,224))
-    # display image 
+    
+    # Resize and Preprocess
+    resized = cv2.resize(opencv_image, (224, 224))
     st.image(opencv_image, channels="RGB")
 
-    resized = mobilenet_v2_preprocess_input(resized)
-    img_reshape = resized[np.newaxis,...]
+    # MobileNetV2 preprocessing usually expects float32
+    # If using tf.keras.applications.mobilenet_v2.preprocess_input:
+    img_reshape = np.expand_dims(resized, axis=0).astype(np.float32)
+    img_reshape = (img_reshape / 127.5) - 1.0  # Manual MobileNetV2 preprocessing
 
     Genrate_pred = st.button("Generate Prediction")    
     if Genrate_pred:
-        prediction = model.predict(img_reshape).argmax()
-        st.title("Predicted Label for the image is {}".format(map_dict [prediction]))
+        # --- TFLITE INFERENCE STEPS ---
+        # 1. Set the input tensor
+        interpreter.set_tensor(input_details[0]['index'], img_reshape)
+        
+        # 2. Run the model
+        interpreter.invoke()
+        
+        # 3. Get the result from the output tensor
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+        
+        # 4. Get the index of the highest probability
+        prediction_index = np.argmax(output_data)
+        
+        st.title(f"Predicted Label for the image is {map_dict[prediction_index]}")
